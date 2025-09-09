@@ -1,0 +1,61 @@
+﻿<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8" />
+    <title>Résumé (Mistral)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- La config est chargée AVANT la logique -->
+    <script src="config.js"></script>
+    <script defer src="popup.js"></script>
+    <style>
+        body {
+            font: 14px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+            width: 360px;
+            margin: 0;
+            padding: 12px;
+        }
+
+        .row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        button {
+            padding: 8px 10px;
+        }
+
+        .result {
+            white-space: pre-wrap;
+            border: 1px solid #eee;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+
+        .muted {
+            color: #666;
+        }
+
+        textarea {
+            width: 100%;
+            height: 120px;
+            display: none;
+        }
+        /* debug optionnel */
+    </style>
+</head>
+<body>
+    <h3>Résumé en francais</h3>
+    <div class="row">
+        <button id="refreshSel" title="Relire la sélection">Relire la sélection</button>
+        <button id="summarize" title="Résumer maintenant">Résumer</button>
+        <button id="copy" title="Copier le résumé">Copier</button>
+    </div>
+    <div id="status" class="muted">Récupération de la sélection…</div>
+    <div id="output" class="result" hidden></div>
+
+    <!-- Zone cachée (debug) pour visualiser la sélection brute -->
+    <textarea id="selectionRaw"></textarea>
+</body>
+</html>
