@@ -1,4 +1,4 @@
-﻿# Résumé de texte avec Mistral – Extension Chrome - Utilisatio personnelle uniquement
+﻿# Résumé de texte avec Mistral – Extension Chrome - Utilisation personnelle uniquement
 
 Extension **personnelle** qui :
 - lit le **texte sélectionné** dans l’onglet actif,
@@ -53,4 +53,5 @@ Extension **personnelle** qui :
 ## Licence
 
 Usage personnel uniquement car la clé est publique dans le code. Ne pas distribuer ni publier avec la clé en clair.
+
 
