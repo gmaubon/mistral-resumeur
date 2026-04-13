@@ -1,4 +1,4 @@
-﻿/**
+/**
  * popup.js – Extension Chrome (Manifest V3) pour résumé 1 paragraphe (FR) avec Mistral
  * ------------------------------------------------------------------------------------
  * Rôle :
@@ -13,9 +13,12 @@
 
 // ---- Raccourcis DOM ---------------------------------------------------------
 const $ = (id) => document.getElementById(id);
-const statusEl = $("status");
 const outputEl = $("output");
 const selectionRawEl = $("selectionRaw");
+const mainSection = $("mainSection");
+const historySection = $("historySection");
+const historyList = $("historyList");
+const statusEl = $("status");
 
 // ---- Lecture de la configuration globale (injectée par config.js) -----------
 const CFG = (window && window.MISTRAL_CONFIG) || {};
@@ -63,6 +66,16 @@ async function getPageSelection() {
 }
 
 /**
+ * Génère un hash SHA-256 d'un texte pour servir de clé de cache.
+ */
+async function hashText(text) {
+    const msgUint8 = new TextEncoder().encode(text);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
  * Construit le prompt à partir du template. Tronque si MAX_CHARS > 0.
  */
 function buildPromptFromTemplate(rawText) {
@@ -72,18 +85,17 @@ function buildPromptFromTemplate(rawText) {
 }
 
 /**
- * Appel en mode direct vers l'API de Mistral (clé visible côté client).
- * Endpoint: POST https://api.mistral.ai/v1/chat/completions
- * Payload standard "messages".
+ * Appel en mode direct vers l'API de Mistral avec support du streaming.
  */
-async function callMistralDirect(prompt) {
+async function callMistralDirect(prompt, onChunk) {
     const body = {
         model: MODEL,
         messages: [
             { role: "system", content: "Tu es un assistant concis qui résume fidèlement." },
             { role: "user", content: prompt }
         ],
-        temperature: TEMPERATURE
+        temperature: TEMPERATURE,
+        stream: true
     };
 
     const resp = await fetch(API_URL, {
@@ -95,13 +107,42 @@ async function callMistralDirect(prompt) {
         body: JSON.stringify(body)
     });
 
-    const data = await resp.json().catch(() => ({}));
     if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
         const msg = data?.error?.message || JSON.stringify(data) || `HTTP ${resp.status}`;
         throw new Error(`Mistral: ${msg}`);
     }
-    const summary = data?.choices?.[0]?.message?.content || "";
-    return summary.trim();
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = "";
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split("\n");
+
+        for (const line of lines) {
+            const dataLine = line.trim();
+            if (!dataLine || dataLine === "data: [DONE]") continue;
+
+            if (dataLine.startsWith("data: ")) {
+                try {
+                    const json = JSON.parse(dataLine.slice(6));
+                    const content = json.choices?.[0]?.delta?.content || "";
+                    if (content) {
+                        fullText += content;
+                        if (onChunk) onChunk(fullText);
+                    }
+                } catch (e) {
+                    console.error("Erreur parsing chunk", e);
+                }
+            }
+        }
+    }
+    return fullText.trim();
 }
 
 /**
@@ -122,22 +163,103 @@ async function runSummarizeFlow(auto = false) {
 
         // Construction du prompt
         const prompt = buildPromptFromTemplate(sel.trim());
+        const cacheKey = await hashText(prompt);
 
-        // Appel API : direct vs proxy
+        // Vérification du cache
+        const cache = await chrome.storage.local.get(cacheKey);
+        if (cache[cacheKey]) {
+            statusEl.textContent = "Récupéré du cache ✅";
+            outputEl.textContent = cache[cacheKey];
+            outputEl.hidden = false;
+            return;
+        }
+
+        // Appel API avec streaming
         statusEl.textContent = "Appel à Mistral…";
-        const summary = await callMistralDirect(prompt);
-
-        outputEl.textContent = summary || "(Résumé vide)";
         outputEl.hidden = false;
-        statusEl.textContent = "";
+        
+        const summary = await callMistralDirect(prompt, (chunk) => {
+            outputEl.textContent = chunk;
+            statusEl.textContent = "Génération en cours…";
+        });
+
+        if (summary) {
+            // Mise en cache du résultat
+            await chrome.storage.local.set({ [cacheKey]: summary });
+            statusEl.textContent = "";
+        } else {
+            outputEl.textContent = "(Résumé vide)";
+            statusEl.textContent = "";
+        }
     } catch (e) {
         statusEl.textContent = e?.message || String(e);
     }
 }
 
+// ---- Bascule de vue ---------------------------------------------------------
+function showView(view) {
+    if (view === "history") {
+        mainSection.hidden = true;
+        historySection.hidden = false;
+        renderHistory();
+    } else {
+        mainSection.hidden = false;
+        historySection.hidden = true;
+    }
+}
+
+async function renderHistory() {
+    historyList.innerHTML = "<div class='muted'>Chargement…</div>";
+    const all = await chrome.storage.local.get(null);
+    const keys = Object.keys(all).filter(k => k.length === 64); // filtres les hash SHA256
+
+    if (keys.length === 0) {
+        historyList.innerHTML = "<div class='muted'>Aucun résumé en cache.</div>";
+        return;
+    }
+
+    historyList.innerHTML = "";
+    // Trier par usage récent (pas possible sans timestamp, mais on affiche tout)
+    keys.forEach(key => {
+        const text = all[key];
+        const item = document.createElement("div");
+        item.className = "history-item";
+        item.innerHTML = `
+            <div class="history-text">${text}</div>
+            <div class="history-actions">
+                <button class="btn-small copy-btn">Copier</button>
+                <button class="btn-small delete-btn">Supprimer</button>
+            </div>
+        `;
+
+        item.querySelector(".copy-btn").addEventListener("click", async () => {
+            await navigator.clipboard.writeText(text);
+            statusEl.textContent = "Copié !";
+            setTimeout(() => statusEl.textContent = "", 1000);
+        });
+
+        item.querySelector(".delete-btn").addEventListener("click", async () => {
+            await chrome.storage.local.remove(key);
+            renderHistory();
+        });
+
+        historyList.appendChild(item);
+    });
+}
+
 // ---- Boutons UI -------------------------------------------------------------
-$("refreshSel").addEventListener("click", () => runSummarizeFlow(true));
-$("summarize").addEventListener("click", () => runSummarizeFlow(false));
+$("refreshSel").addEventListener("click", () => { showView("main"); runSummarizeFlow(true); });
+$("summarize").addEventListener("click", () => { showView("main"); runSummarizeFlow(false); });
+$("viewCache").addEventListener("click", () => showView("history"));
+$("backToMain").addEventListener("click", () => showView("main"));
+
+$("clearCache").addEventListener("click", async () => {
+    if (confirm("Vider tout l'historique ?")) {
+        await chrome.storage.local.clear();
+        renderHistory();
+    }
+});
+
 $("copy").addEventListener("click", async () => {
     try {
         const txt = outputEl.hidden ? "" : outputEl.textContent;

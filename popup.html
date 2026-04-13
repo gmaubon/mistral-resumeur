@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="fr">
 <head>
     <meta charset="utf-8" />
@@ -33,6 +33,51 @@
             margin-top: 10px;
         }
 
+        .history-item {
+            border-bottom: 1px solid #eee;
+            padding: 12px 0;
+            position: relative;
+        }
+
+        .history-item:last-child {
+            border-bottom: none;
+        }
+
+        .history-text {
+            font-size: 13px;
+            color: #444;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            margin-bottom: 8px;
+            line-clamp: 3;
+        }
+
+        .history-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-small {
+            padding: 4px 8px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        #historySection {
+            margin-top: 15px;
+            max-height: 350px;
+            overflow-y: auto;
+        }
+
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
         .muted {
             color: #666;
         }
@@ -48,12 +93,27 @@
 <body>
     <h3>Résumé en francais</h3>
     <div class="row">
-        <button id="refreshSel" title="Relire la sélection">Relire la sélection</button>
+        <button id="refreshSel" title="Relire la sélection">Relire</button>
         <button id="summarize" title="Résumer maintenant">Résumer</button>
         <button id="copy" title="Copier le résumé">Copier</button>
+        <button id="viewCache" title="Voir l'historique">Historique</button>
     </div>
     <div id="status" class="muted">Récupération de la sélection…</div>
-    <div id="output" class="result" hidden></div>
+    
+    <div id="mainSection">
+        <div id="output" class="result" hidden></div>
+    </div>
+
+    <div id="historySection" hidden>
+        <div class="header-row">
+            <strong>Anciens résumés</strong>
+            <div>
+                <button id="clearCache" class="btn-small">Vider</button>
+                <button id="backToMain" class="btn-small">Retour</button>
+            </div>
+        </div>
+        <div id="historyList"></div>
+    </div>
 
     <!-- Zone cachée (debug) pour visualiser la sélection brute -->
     <textarea id="selectionRaw"></textarea>

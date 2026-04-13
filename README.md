@@ -1,10 +1,10 @@
-﻿# Résumé de texte avec Mistral – Extension Chrome - Utilisation personnelle uniquement
+﻿# Résumé (1 paragraphe) – Extension Chrome (Mistral)
 
 Extension **personnelle** qui :
 - lit le **texte sélectionné** dans l’onglet actif,
 - demande à **Mistral** un **résumé en un seul paragraphe en français**, le prompt est modifiable
 - l’affiche dans le **popup**, avec un bouton **Copier**.
-- Direct (clé en clair)** : simple, rapide pour usage perso.
+- Direct (clé en clair)** : simple, *rapide* pour usage perso.
 ---
 
 ## Installation
@@ -53,5 +53,3 @@ Extension **personnelle** qui :
 ## Licence
 
 Usage personnel uniquement car la clé est publique dans le code. Ne pas distribuer ni publier avec la clé en clair.
-
-
