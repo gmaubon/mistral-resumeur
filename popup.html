@@ -4,82 +4,291 @@
     <meta charset="utf-8" />
     <title>Résumé (Mistral)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- La config est chargée AVANT la logique -->
     <script src="config.js"></script>
     <script defer src="popup.js"></script>
     <style>
+        :root {
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --border-color: #e2e8f0;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --accent-gradient: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            --accent-color: #6366f1;
+            --accent-hover: #4f46e5;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(99, 102, 241, 0.05), 0 2px 4px -1px rgba(99, 102, 241, 0.03);
+            --shadow-lg: 0 10px 15px -3px rgba(99, 102, 241, 0.08), 0 4px 6px -4px rgba(99, 102, 241, 0.05);
+            --radius-md: 10px;
+            --radius-lg: 14px;
+        }
+
         body {
-            font: 14px system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-            width: 360px;
+            font-family: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
+            width: 380px;
             margin: 0;
-            padding: 12px;
+            padding: 16px;
+            background: linear-gradient(135deg, #f5f3ff 0%, #eff6ff 100%);
+            color: var(--text-main);
+            box-sizing: border-box;
+        }
+
+        h3 {
+            margin-top: 0;
+            margin-bottom: 16px;
+            font-size: 19px;
+            font-weight: 700;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            letter-spacing: -0.02em;
         }
 
         .row {
             display: flex;
             gap: 8px;
-            margin-bottom: 8px;
+            margin-bottom: 14px;
         }
 
         button {
-            padding: 8px 10px;
+            flex: 1;
+            padding: 10px 12px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-main);
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: var(--shadow-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            border-color: #cbd5e1;
+            background-color: #faf5ff;
+            color: var(--accent-color);
+            box-shadow: var(--shadow-md);
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        /* Bouton principal "Résumer" */
+        #summarize {
+            background: var(--accent-gradient);
+            color: #ffffff;
+            border: none;
+            box-shadow: 0 4px 10px rgba(99, 102, 241, 0.15);
+        }
+
+        #summarize:hover {
+            box-shadow: 0 6px 14px rgba(99, 102, 241, 0.25);
+            filter: brightness(1.05);
+            color: #ffffff;
+        }
+
+        /* Boutons d'action dans l'historique / retour */
+        #backToMain, #clearCache {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+        }
+
+        #backToMain {
+            border-color: var(--accent-color);
+            color: var(--accent-color);
+        }
+
+        #backToMain:hover {
+            background: #f5f3ff;
         }
 
         .result {
             white-space: pre-wrap;
-            border: 1px solid #eee;
-            padding: 10px;
-            border-radius: 8px;
-            margin-top: 10px;
-        }
-
-        .history-item {
-            border-bottom: 1px solid #eee;
-            padding: 12px 0;
+            border: 1px solid var(--border-color);
+            background: var(--card-bg);
+            padding: 16px;
+            border-radius: var(--radius-lg);
+            margin-top: 14px;
+            font-size: 13.5px;
+            line-height: 1.6;
+            color: var(--text-main);
+            box-shadow: var(--shadow-lg);
             position: relative;
-        }
-
-        .history-item:last-child {
-            border-bottom: none;
-        }
-
-        .history-text {
-            font-size: 13px;
-            color: #444;
-            display: -webkit-box;
-            -webkit-line-clamp: 3;
-            -webkit-box-orient: vertical;
             overflow: hidden;
-            margin-bottom: 8px;
-            line-clamp: 3;
+            animation: fadeIn 0.3s ease-out;
         }
 
-        .history-actions {
+        .result::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--accent-gradient);
+        }
+
+        /* Container de tokens */
+        .usage-container {
             display: flex;
-            gap: 10px;
+            justify-content: space-between;
+            gap: 8px;
+            margin-top: 12px;
+            padding: 8px 12px;
+            background: #f8fafc;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
         }
 
-        .btn-small {
-            padding: 4px 8px;
+        .usage-badge {
             font-size: 11px;
-            cursor: pointer;
+            color: var(--text-muted);
+            font-weight: 500;
         }
 
+        #status {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            min-height: 18px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 500;
+        }
+
+        /* Historique */
         #historySection {
             margin-top: 15px;
-            max-height: 350px;
+            max-height: 380px;
             overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        #historySection::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        #historySection::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        #historySection::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+
+        #historySection::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
         }
 
         .header-row {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            margin-bottom: 14px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+
+        .header-row span {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .header-row div {
+            display: flex;
+            gap: 6px;
+        }
+
+        .btn-small {
+            padding: 6px 10px;
+            font-size: 11px;
+            border-radius: 6px;
+        }
+
+        .history-item {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 12px;
             margin-bottom: 10px;
+            transition: all 0.2s ease;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .history-item:hover {
+            transform: translateY(-2px);
+            border-color: #cbd5e1;
+            box-shadow: var(--shadow-md);
+        }
+
+        .history-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            border-bottom: 1px dashed var(--border-color);
+            padding-bottom: 6px;
+        }
+
+        .history-date {
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .history-tokens {
+            color: var(--accent-color);
+            font-weight: 500;
+        }
+
+        .history-text {
+            font-size: 13px;
+            color: var(--text-main);
+            line-height: 1.5;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            margin-bottom: 10px;
+            line-clamp: 3;
+        }
+
+        .history-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .history-actions button {
+            padding: 5px 10px;
+            font-size: 11px;
+            border-radius: 6px;
         }
 
         .muted {
-            color: #666;
+            color: var(--text-muted);
+            font-size: 12px;
+            margin-top: 8px;
+            text-align: center;
+            font-style: italic;
         }
 
         textarea {
@@ -87,29 +296,68 @@
             height: 120px;
             display: none;
         }
-        /* debug optionnel */
+
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(6px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
     </style>
 </head>
 <body>
-    <h3>Résumé en francais</h3>
+    <h3>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle;">
+            <path d="M12 2L2 22H22L12 2Z" fill="url(#grad)" />
+            <defs>
+                <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" style="stop-color:#4f46e5;stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:#7c3aed;stop-opacity:1" />
+                </linearGradient>
+            </defs>
+        </svg>
+        Résumé Mistral
+    </h3>
     <div class="row">
-        <button id="refreshSel" title="Relire la sélection">Relire</button>
-        <button id="summarize" title="Résumer maintenant">Résumer</button>
-        <button id="copy" title="Copier le résumé">Copier</button>
-        <button id="viewCache" title="Voir l'historique">Historique</button>
+        <button id="refreshSel" title="Relire la sélection">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            Relire
+        </button>
+        <button id="summarize" title="Résumer maintenant">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+            Résumer
+        </button>
+        <button id="copy" title="Copier le résumé">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copier
+        </button>
+        <button id="viewCache" title="Voir l'historique">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Hist.
+        </button>
     </div>
     <div id="status" class="muted">Récupération de la sélection…</div>
     
     <div id="mainSection">
         <div id="output" class="result" hidden></div>
+        <div id="usageStats" class="usage-container" hidden>
+            <span class="usage-badge" id="tokenPrompt">Prompt : 0 tk</span>
+            <span class="usage-badge" id="tokenCompletion">Réponse : 0 tk</span>
+            <span class="usage-badge" id="tokenTotal">Total : 0 tk</span>
+        </div>
     </div>
 
     <div id="historySection" hidden>
         <div class="header-row">
-            <strong>Anciens résumés</strong>
+            <span>Anciens résumés</span>
             <div>
-                <button id="clearCache" class="btn-small">Vider</button>
-                <button id="backToMain" class="btn-small">Retour</button>
+                <button id="clearCache" class="btn-small" style="display:inline-flex;">Vider</button>
+                <button id="backToMain" class="btn-small" style="display:inline-flex;">Retour</button>
             </div>
         </div>
         <div id="historyList"></div>

@@ -87,7 +87,29 @@ function buildPromptFromTemplate(rawText) {
 /**
  * Appel en mode direct vers l'API de Mistral avec support du streaming.
  */
-async function callMistralDirect(prompt, onChunk) {
+// ---- Affichage de la volumétrie des tokens ----------------------------------
+const usageStatsEl = $("usageStats");
+const tokenPromptEl = $("tokenPrompt");
+const tokenCompletionEl = $("tokenCompletion");
+const tokenTotalEl = $("tokenTotal");
+
+function displayUsage(usage) {
+    if (!usageStatsEl) return;
+    if (!usage) {
+        usageStatsEl.hidden = true;
+        return;
+    }
+    const suffix = usage.estimated ? " (est.)" : "";
+    tokenPromptEl.textContent = `Prompt : ${usage.prompt_tokens} tk${suffix}`;
+    tokenCompletionEl.textContent = `Réponse : ${usage.completion_tokens} tk${suffix}`;
+    tokenTotalEl.textContent = `Total : ${usage.total_tokens} tk${suffix}`;
+    usageStatsEl.hidden = false;
+}
+
+/**
+ * Tentative d'appel vers l'API de Mistral avec support du streaming.
+ */
+async function callMistralDirectAttempt(prompt, onChunk, includeUsage) {
     const body = {
         model: MODEL,
         messages: [
@@ -97,6 +119,9 @@ async function callMistralDirect(prompt, onChunk) {
         temperature: TEMPERATURE,
         stream: true
     };
+    if (includeUsage) {
+        body.stream_options = { include_usage: true };
+    }
 
     const resp = await fetch(API_URL, {
         method: "POST",
@@ -110,12 +135,13 @@ async function callMistralDirect(prompt, onChunk) {
     if (!resp.ok) {
         const data = await resp.json().catch(() => ({}));
         const msg = data?.error?.message || JSON.stringify(data) || `HTTP ${resp.status}`;
-        throw new Error(`Mistral: ${msg}`);
+        throw new Error(`Mistral: ${msg} [Status: ${resp.status}]`);
     }
 
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
     let fullText = "";
+    let usage = null;
 
     while (true) {
         const { done, value } = await reader.read();
@@ -136,13 +162,43 @@ async function callMistralDirect(prompt, onChunk) {
                         fullText += content;
                         if (onChunk) onChunk(fullText);
                     }
+                    if (json.usage) {
+                        usage = json.usage;
+                    }
                 } catch (e) {
                     console.error("Erreur parsing chunk", e);
                 }
             }
         }
     }
-    return fullText.trim();
+    return { text: fullText.trim(), usage };
+}
+
+/**
+ * Appel avec gestion du repli automatique sans stream_options.
+ */
+async function callMistralDirect(prompt, onChunk) {
+    try {
+        return await callMistralDirectAttempt(prompt, onChunk, true);
+    } catch (e) {
+        const errorMsg = e.message || "";
+        if (errorMsg.includes("422") || errorMsg.includes("400") || errorMsg.includes("stream_options")) {
+            console.warn("stream_options non supporté par l'API, nouvel essai sans cette option...", e);
+            const res = await callMistralDirectAttempt(prompt, onChunk, false);
+            const promptWords = prompt.trim().split(/\s+/).length;
+            const completionWords = res.text.split(/\s+/).length;
+            const promptTokens = Math.round(promptWords * 1.3);
+            const completionTokens = Math.round(completionWords * 1.3);
+            res.usage = {
+                prompt_tokens: promptTokens,
+                completion_tokens: completionTokens,
+                total_tokens: promptTokens + completionTokens,
+                estimated: true
+            };
+            return res;
+        }
+        throw e;
+    }
 }
 
 /**
@@ -153,6 +209,7 @@ async function runSummarizeFlow(auto = false) {
         statusEl.textContent = auto ? "Lecture de la sélection…" : "Traitement…";
         outputEl.hidden = true;
         outputEl.textContent = "";
+        displayUsage(null);
 
         const sel = await getPageSelection();
         selectionRawEl.value = sel; // debug caché (non affiché)
@@ -168,8 +225,16 @@ async function runSummarizeFlow(auto = false) {
         // Vérification du cache
         const cache = await chrome.storage.local.get(cacheKey);
         if (cache[cacheKey]) {
+            const cachedVal = cache[cacheKey];
             statusEl.textContent = "Récupéré du cache ✅";
-            outputEl.textContent = cache[cacheKey];
+            
+            if (typeof cachedVal === "object" && cachedVal !== null) {
+                outputEl.textContent = cachedVal.summary || "";
+                displayUsage(cachedVal.usage);
+            } else {
+                outputEl.textContent = cachedVal;
+                displayUsage(null);
+            }
             outputEl.hidden = false;
             return;
         }
@@ -178,21 +243,28 @@ async function runSummarizeFlow(auto = false) {
         statusEl.textContent = "Appel à Mistral…";
         outputEl.hidden = false;
         
-        const summary = await callMistralDirect(prompt, (chunk) => {
+        const result = await callMistralDirect(prompt, (chunk) => {
             outputEl.textContent = chunk;
             statusEl.textContent = "Génération en cours…";
         });
 
-        if (summary) {
-            // Mise en cache du résultat
-            await chrome.storage.local.set({ [cacheKey]: summary });
+        if (result && result.text) {
+            const cacheObj = {
+                summary: result.text,
+                timestamp: Date.now(),
+                usage: result.usage
+            };
+            await chrome.storage.local.set({ [cacheKey]: cacheObj });
+            displayUsage(result.usage);
             statusEl.textContent = "";
         } else {
             outputEl.textContent = "(Résumé vide)";
+            displayUsage(null);
             statusEl.textContent = "";
         }
     } catch (e) {
         statusEl.textContent = e?.message || String(e);
+        displayUsage(null);
     }
 }
 
@@ -218,32 +290,74 @@ async function renderHistory() {
         return;
     }
 
+    // Associer clés et données pour trier
+    const items = keys.map(key => {
+        const val = all[key];
+        let summary = "";
+        let timestamp = 0;
+        let usage = null;
+
+        if (typeof val === "object" && val !== null) {
+            summary = val.summary || "";
+            timestamp = val.timestamp || 0;
+            usage = val.usage || null;
+        } else {
+            summary = val || "";
+        }
+
+        return { key, summary, timestamp, usage };
+    });
+
+    // Trier par date décroissante (les plus récents en premier)
+    items.sort((a, b) => b.timestamp - a.timestamp);
+
     historyList.innerHTML = "";
-    // Trier par usage récent (pas possible sans timestamp, mais on affiche tout)
-    keys.forEach(key => {
-        const text = all[key];
-        const item = document.createElement("div");
-        item.className = "history-item";
-        item.innerHTML = `
-            <div class="history-text">${text}</div>
+    items.forEach(item => {
+        const itemEl = document.createElement("div");
+        itemEl.className = "history-item";
+        
+        let dateStr = "Date antérieure";
+        if (item.timestamp > 0) {
+            const dateObj = new Date(item.timestamp);
+            dateStr = dateObj.toLocaleString("fr-FR", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit"
+            });
+        }
+
+        let tokensStr = "";
+        if (item.usage) {
+            const suffix = item.usage.estimated ? " (est.)" : "";
+            tokensStr = `• ${item.usage.total_tokens} tk${suffix} (${item.usage.prompt_tokens}p / ${item.usage.completion_tokens}r)`;
+        }
+
+        itemEl.innerHTML = `
+            <div class="history-meta">
+                <span class="history-date">${dateStr}</span>
+                <span class="history-tokens">${tokensStr}</span>
+            </div>
+            <div class="history-text">${item.summary}</div>
             <div class="history-actions">
                 <button class="btn-small copy-btn">Copier</button>
                 <button class="btn-small delete-btn">Supprimer</button>
             </div>
         `;
 
-        item.querySelector(".copy-btn").addEventListener("click", async () => {
-            await navigator.clipboard.writeText(text);
+        itemEl.querySelector(".copy-btn").addEventListener("click", async () => {
+            await navigator.clipboard.writeText(item.summary);
             statusEl.textContent = "Copié !";
             setTimeout(() => statusEl.textContent = "", 1000);
         });
 
-        item.querySelector(".delete-btn").addEventListener("click", async () => {
-            await chrome.storage.local.remove(key);
+        itemEl.querySelector(".delete-btn").addEventListener("click", async () => {
+            await chrome.storage.local.remove(item.key);
             renderHistory();
         });
 
-        historyList.appendChild(item);
+        historyList.appendChild(itemEl);
     });
 }
 
